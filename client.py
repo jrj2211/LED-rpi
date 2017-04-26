@@ -6,8 +6,9 @@ import time
 import json
 import math
 import errno
+import TcpClient
 from socket import error as SocketError
-from thread import *
+from thread import start_new_thread
 
 
 # Setup Network
@@ -23,7 +24,6 @@ s.connect((HOST, PORT))
 
 def sendMessage(message):
 	message = json.dumps(message);
-	#print("  Sent: " + json.dumps(message))
 	s.send(message)
 	
 def receiveMessage(size):

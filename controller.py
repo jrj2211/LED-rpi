@@ -6,8 +6,9 @@ import time
 import json
 import math
 import errno
+import threading
 from socket import error as SocketError
-from threading import Thread
+from TcpClient import *
 
 # Setup Network
 HOST = ''
@@ -213,29 +214,23 @@ class Message(object):
 	def hasAttr(self, attr):
 		return attr in self.message;
 		
-# Function for handling connections. This will be used to create threads
-class Client(Thread):
-
+# Handle a client
+class Client(threading.Thread): 
 	def __init__(self, conn, addr):
-		super(Client, self).__init__()
+		threading.Thread.__init__(self)
 		self.conn = conn
-		self.running = True
+		self.tcp = TcpClient(conn, addr[0], addr[1])
 	
-		print("[SERVER] Client connected at " + addr[0] + ":" + str(addr[1]))
+	def run(self):
+		print("[S] " + self.tcp.getHexId(4) + " | Client connected")
 		
-		# Infinite loop so that function do not terminate and thread doesnt end.
-		while self.running == True:
-			try:
-				s = conn.recv(1024)
-
-				# Check if disconnected client
-				if s == '':
-					break
-
-				msg = Message(s)
+		while True:
+			# Get next message size
+			size = self.tcp.nextMessageLength()
+			if size != -1:
+				msg = Message(self.tcp.receiveAll(size))
 				
 				if msg.hasAttr("channel"):
-				
 					channels = Channels.match(msg.getAttr("channel"))
 					
 					for channel in channels:
@@ -277,20 +272,11 @@ class Client(Thread):
 					message = {}
 					message['patterns-get'] = Patterns.load()
 					self.send(message)
-									
-			except SocketError as e:
-				if e.errno == errno.ECONNRESET:
-					break
-	 
-		print("[SERVER] Client disconnected")
-		conn.close()
-		
-	def send(self, message):
-		message = json.dumps(message);
-		self.conn.send(message)
-		
-	def stop(self):
-		self.running = False
+			else:
+				break
+			
+		print("[S] " + self.tcp.getHexId(4) + " | Client disconnected")
+		self.tcp.disconnect()
 		
 class Server(object):
 	def __init__(self, host, port):
@@ -318,9 +304,8 @@ class Server(object):
 			while True:
 				# Handle client connection
 				conn, addr = self.sock.accept()
-				client = Client(conn, addr)
-				client.start()
-
+				clientThread = Client(conn, addr)
+				clientThread.start()
 		except KeyboardInterrupt:
 			pass
 			
