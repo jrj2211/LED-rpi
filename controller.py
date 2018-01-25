@@ -35,7 +35,7 @@ class Channels(object):
 	def get(id):
 		id = int(id)
 		return Channels.added[id];
-		
+
 	@staticmethod
 	def match(id):
 		id = int(id)
@@ -44,12 +44,12 @@ class Channels(object):
 			if id == -1 or channel.id == id:
 				matched.append(channel)
 		return matched
-		
+
 	@staticmethod
 	def add(id, r, g, b):
 		id = int(id)
 		Channels.added[id] = Channel(id, r, g, b)
-		
+
 class Channel(object):
 	def __init__(self, id, r, g, b):
 		self.id = id
@@ -58,29 +58,29 @@ class Channel(object):
 		self.blue = LED(self, b)
 		self.leds = [self.red, self.green, self.blue]
 		self.brightness = 1.0
-		self.lightness = 0.0
+		self.saturation = 0.0
 		self.pattern = None
 		print("Initilized channel " + str(id) + " [" + str(r) + "," + str(g) + "," + str(b) + "]")
-		
-	def setLightness(self, value):
-		self.lightness = inRange(int(value), 0, 100) / 100.0
+
+	def setSaturation(self, value):
+		self.saturation = inRange(float(value), 0, 1)
 		self.update()
-		
+
 	def setBrightness(self, value):
-		self.brightness = inRange(int(value), 0, 100) / 100.0
+		self.brightness = inRange(float(value), 0, 1)
 		self.update()
-		
+
 	def setPattern(self, file):
 		if self.pattern != None:
 			self.pattern.toggle(False)
 		self.pattern = Pattern(file, self)
-		
+
 	def color(self, r, g, b):
 		self.red.set(r)
 		self.green.set(g)
 		self.blue.set(b)
 		self.update()
-		
+
 	def update(self):
 		for led in self.leds:
 			led.set()
@@ -93,22 +93,22 @@ class LED(object):
 		self.pwm = GPIO.PWM(pin, 100)
 		self.pwm.start(0)
 		self.value = 0
-		
+
 	def set(self, value=None):
 		if value != None:
 			self.value = inRange(float(value), 0, 255)
-			
+
 		colorRatio = (self.value/255.0)*100
-		saturation = (100-colorRatio)*self.channel.lightness
-		
+		saturation = (100-colorRatio)*self.channel.saturation
+
 		duty = (colorRatio+saturation)*self.channel.brightness
 		duty = inRange(duty, 0, 100)
-			
+
 		self.pwm.ChangeDutyCycle(duty)
-		
+
 	def diff(self, value):
 		return float(value)-self.value
-		
+
 class Patterns(object):
 	added = [];
 
@@ -120,7 +120,7 @@ class Patterns(object):
 			if file.endswith(".pat"):
 				Patterns.added.append(file)
 		return list(Patterns.added)
-		
+
 class Pattern(object):
 	def __init__(self, file, channel):
 		self.running = False
@@ -128,7 +128,8 @@ class Pattern(object):
 		self.channel = channel
 		self.commands = []
 		self.thread = None
-		
+
+		print(PATTERN_DIR+file)
 		with open(PATTERN_DIR+file) as f:
 			lines = f.read().splitlines()
 			for line in lines:
@@ -139,26 +140,26 @@ class Pattern(object):
 					self.commands.append({"type": command[0], "delay": float(command[1]), "r": float(command[2]), "g": float(command[3]), "b": float(command[4])})
 				elif command[0] == "fade":
 					self.commands.append({"type": command[0], "delay": float(command[1]), "r": float(command[2]), "g": float(command[3]), "b": float(command[4])})
-		
+
 	def toggle(self, running=None):
 		if running == None:
 			self.running = not self.running
 		else:
 			self.running = running
-	
+
 		if self.running == True and self.thread == None:
 			print("Started pattern: channel " + str(self.channel.id))
-			self.thread = Thread(target=self.run, args=())
+			self.thread = threading.Thread(target=self.run, args=())
 			self.thread.start()
-		elif self.running == False and isinstance(self.thread, Thread):
+		elif self.running == False and isinstance(self.thread, threading.Thread):
 			self.thread.join()
 			self.thread = None
-	
+
 	def run(self):
 		while self.running == True:
 			if self.cursor >= len(self.commands):
 				self.cursor = 0
-			
+
 			command = self.commands[self.cursor]
 
 			if command["type"] == "delay":
@@ -171,7 +172,7 @@ class Pattern(object):
 			elif command["type"] == "fade":
 				increment_delay = .05
 				increments = int(math.floor(float(command["delay"]) / increment_delay))
-				
+
 				diff_red = float(self.channel.red.diff(command["r"]) / increments)
 				diff_green = float(self.channel.green.diff(command["g"]) / increments)
 				diff_blue = float(self.channel.blue.diff(command["b"]) / increments)
@@ -179,15 +180,15 @@ class Pattern(object):
 				for x in range(0, increments):
 					if self.running != True:
 						break
-						
+
 					self.fader(diff_red, self.channel.red, command["r"])
 					self.fader(diff_green, self.channel.green, command["g"])
 					self.fader(diff_blue, self.channel.blue, command["b"])
 
 					time.sleep(increment_delay)
-			
+
 			self.cursor += 1
-			
+
 		print("Stopped pattern: channel " + str(self.channel.id))
 
 	def fader(self, diff, led, desired):
@@ -197,7 +198,7 @@ class Pattern(object):
 			led.set(led.value + diff)
 		else:
 			led.set(desired)
-			
+
 class Message(object):
 	def __init__(self, text):
 		self.message = {}
@@ -205,99 +206,100 @@ class Message(object):
 			self.message = json.loads(text)
 		except:
 			pass
-		
+
 	def getAttr(self, attr):
 		if self.hasAttr(attr):
 			return self.message[attr];
 		return None
-		
+
 	def hasAttr(self, attr):
 		return attr in self.message;
-		
+
 # Handle a client
-class Client(threading.Thread): 
+class Client(threading.Thread):
 	def __init__(self, conn, addr):
 		threading.Thread.__init__(self)
 		self.conn = conn
 		self.tcp = TcpClient(conn, addr[0], addr[1])
-	
+
 	def run(self):
 		print("[S] " + self.tcp.getHexId(4) + " | Client connected")
-		
+
 		while True:
 			# Get next message size
 			size = self.tcp.nextMessageLength()
 			if size != -1:
 				msg = Message(self.tcp.receiveAll(size))
-				
+
 				if msg.hasAttr("channel"):
 					channels = Channels.match(msg.getAttr("channel"))
-					
+
 					for channel in channels:
+
 						if msg.hasAttr("red"):
+							if channel.pattern != None:
+								channel.pattern.toggle(False)
 							channel.red.set(msg.getAttr("red"))
-							if channel.pattern != None:
-								channel.pattern.toggle(False)
-							
+
 						if msg.hasAttr("green"):
+							if channel.pattern != None:
+								channel.pattern.toggle(False)
 							channel.green.set(msg.getAttr("green"))
-							if channel.pattern != None:
-								channel.pattern.toggle(False)
-							
+
 						if msg.hasAttr("blue"):
-							channel.blue.set(msg.getAttr("blue"))
 							if channel.pattern != None:
 								channel.pattern.toggle(False)
-							
-						if msg.hasAttr("lightness"):
-							channel.setLightness(msg.getAttr("lightness"))
-							
+							channel.blue.set(msg.getAttr("blue"))
+
+						if msg.hasAttr("saturation"):
+							channel.setSaturation(msg.getAttr("saturation"))
+
 						if msg.hasAttr("brightness"):
 							channel.setBrightness(msg.getAttr("brightness"))
-							
+
 						if msg.hasAttr("pattern-set"):
+							print("setting pattern " + msg.getAttr("pattern-set"))
 							channel.setPattern(msg.getAttr("pattern-set"))
-							channel.pattern.toggle(True)
-							
+
 						if msg.hasAttr("pattern-run"):
 							if channel.pattern != None:
 								channel.pattern.toggle(msg.getAttr("pattern-run"))
-							
+
 						if msg.hasAttr("pattern-restart"):
 							if channel.pattern != None:
 								channel.pattern.cursor = 0;
 								channel.pattern.toggle(True)
-							
+
 				if msg.hasAttr("patterns-get"):
 					message = {}
 					message['patterns-get'] = Patterns.load()
-					self.send(message)
+					self.tcp.sendMessage(json.dumps(message))
 			else:
 				break
-			
+
 		print("[S] " + self.tcp.getHexId(4) + " | Client disconnected")
 		self.tcp.disconnect()
-		
+
 class Server(object):
 	def __init__(self, host, port):
 		# Create socket
 		print("[SERVER] Starting...")
 		self.clients = {}
-		
+
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		 
+
 		# Bind socket to local host and port
 		try:
 			self.sock.bind((host, port))
-		except socket.error as msg: 
+		except socket.error as msg:
 			print("[SERVER] Bind failed: " + msg[1] + "[" + str(msg[0]) + "]")
 			sys.exit()
-		
+
 	def listen(self, num):
 		self.sock.listen(10)
 		print("[SERVER] Listening")
-		
+
 	def acceptClients(self):
 		# Wait for clients until keyboard interrupt
 		try:
@@ -308,26 +310,25 @@ class Server(object):
 				clientThread.start()
 		except KeyboardInterrupt:
 			pass
-			
+
 	def stop(self):
 		print("[SERVER] Stopping...")
-		
+
 		# Stop all the patterns
 		for channel in Channels.added.itervalues():
 			if channel.pattern != None:
 				channel.pattern.toggle(False)
 			channel.color(0,0,0)
-				
+
 		time.sleep(.1)
-		
+
 		self.sock.close()
 		GPIO.cleanup()
-	
-Channels.add(0, 37, 33, 35)
-Channels.add(1, 11, 13, 15)
+
+Channels.add(0, 11, 13, 7)
 
 Patterns.load();
-		
+
 server = Server(HOST, PORT)
 server.listen(10)
 server.acceptClients()
